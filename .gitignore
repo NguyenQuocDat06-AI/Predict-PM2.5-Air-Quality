@@ -1,0 +1,17 @@
+# Python ignores
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+
+# Virtual environments
+.env
+venv/
+env/
+
+# Mac OS
+.DS_Store
+
+# Project specific
+.agent/
+*.pdf
+part2/figures/
