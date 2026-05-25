@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hướng Dẫn Sử Dụng - Model Comparison (Part 2)</title>
+    <style>
+        :root {
+            --bg-color: #0f172a;
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+            --card-bg: rgba(30, 41, 59, 0.7);
+            --accent-primary: #3b82f6;
+            --accent-secondary: #8b5cf6;
+            --border-color: rgba(255, 255, 255, 0.1);
+        }
+
+        body {
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            line-height: 1.6;
+            margin: 0;
+            padding: 0;
+            background-image: 
+                radial-gradient(circle at 15% 50%, rgba(59, 130, 246, 0.15), transparent 25%),
+                radial-gradient(circle at 85% 30%, rgba(139, 92, 246, 0.15), transparent 25%);
+            background-attachment: fixed;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 40px auto;
+            padding: 20px;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 50px;
+        }
+
+        h1 {
+            font-size: 2.5rem;
+            font-weight: 800;
+            background: linear-gradient(to right, #60a5fa, #c084fc);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 10px;
+        }
+
+        header p {
+            color: var(--text-muted);
+            font-size: 1.1rem;
+        }
+
+        .card {
+            background: var(--card-bg);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            padding: 30px;
+            margin-bottom: 30px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+        }
+
+        h2 {
+            font-size: 1.5rem;
+            color: #e2e8f0;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 10px;
+            margin-top: 0;
+        }
+
+        h3 {
+            color: #cbd5e1;
+            font-size: 1.2rem;
+            margin-top: 25px;
+        }
+
+        ul {
+            color: var(--text-muted);
+            padding-left: 20px;
+        }
+
+        li {
+            margin-bottom: 8px;
+        }
+
+        strong {
+            color: #f1f5f9;
+        }
+
+        code {
+            font-family: 'Fira Code', monospace;
+            background: rgba(0, 0, 0, 0.3);
+            color: #93c5fd;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 0.9em;
+        }
+
+        pre {
+            background: rgba(0, 0, 0, 0.4);
+            border: 1px solid var(--border-color);
+            padding: 15px;
+            border-radius: 8px;
+            overflow-x: auto;
+        }
+
+        pre code {
+            background: transparent;
+            color: #e2e8f0;
+            padding: 0;
+        }
+
+        .highlight {
+            color: #f472b6;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            background: rgba(59, 130, 246, 0.2);
+            color: #93c5fd;
+            margin-left: 10px;
+            vertical-align: middle;
+        }
+        
+        .badge.math { background: rgba(139, 92, 246, 0.2); color: #c4b5fd; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <header>
+        <h1>Model Trainer - PM2.5 Prediction</h1>
+        <p>Đồ án 2: Data Fitting và Phương Pháp OLS (Phần 2)</p>
+    </header>
+
+    <div class="card">
+        <h2>1. Chức Năng Của Module <code style="font-size: 1.1rem">model_comparison.py</code></h2>
+        <p>Module này là "trái tim" của phần huấn luyện mô hình. Nó cung cấp toàn bộ các thuật toán hồi quy tuyến tính được yêu cầu trong đề bài, và đặc biệt là <strong>được lập trình thủ công hoàn toàn từ đầu (from scratch) bằng NumPy</strong>.</p>
+        
+        <h3>Các Mô Hình Đã Tích Hợp</h3>
+        <ul>
+            <li><strong>OLS Basic:</strong> Giải phương trình Normal Equation <code class="highlight">β = (XᵀX)⁻¹Xᵀy</code> bằng phân rã LU để tối ưu độ ổn định. Cung cấp đầy đủ các chỉ số thống kê (p-value, t-statistics, khoảng tin cậy).</li>
+            <li><strong>OLS Feature Selected:</strong> Thuật toán loại bỏ biến lùi (Backward Elimination). Nó sẽ lập vòng lặp để vứt bỏ các biến không quan trọng (dựa trên p-value > 0.05) hoặc các biến gây nhiễu đa cộng tuyến (VIF > 10).</li>
+            <li><strong>Ridge Regression:</strong> Kỹ thuật giảm overfitting bằng L2 Regularization <code class="highlight">β = (XᵀX + λI)⁻¹Xᵀy</code>. Điểm đặc biệt là nó không phạt hệ số chặn (intercept) theo đúng chuẩn toán học học thuật.</li>
+            <li><strong>Lasso Regression:</strong> Cài đặt thuật toán Coordinate Descent phức tạp với Soft-thresholding từ con số 0. Giúp triệt tiêu hoàn toàn các hệ số của biến không quan trọng về 0 (Sparsity).</li>
+        </ul>
+
+        <h3>Các Công Cụ Phụ Trợ Đi Kèm</h3>
+        <ul>
+            <li><strong>K-Fold Cross Validation:</strong> Tự động chia k-tập để tìm ra siêu tham số <code>λ</code> tối ưu nhất cho Ridge và Lasso. Đảm bảo mô hình không bị "học vẹt".</li>
+            <li><strong>4 Biểu Đồ Chẩn Đoán (Residual Analysis):</strong> Tự động vẽ các biểu đồ phân tích phần dư (Residuals vs Fitted, Q-Q Plot, Scale-Location, Cook's Distance) kèm thuật toán làm mượt LOWESS code tay.</li>
+            <li><strong>Feature Importance:</strong> Trực quan hóa mức độ quan trọng của các đặc trưng ảnh hưởng lên bụi PM2.5.</li>
+        </ul>
+    </div>
+
+    <div class="card">
+        <h2>2. Hướng Dẫn Test & Chạy Thử (How to Test)</h2>
+        
+        <h3>Cách 1: Chạy Unit Tests Nội Bộ (Tự động)</h3>
+        <p>File này đã được tích hợp sẵn hệ thống kiểm thử riêng rẽ (Unit Tests) với 22 bài test nhỏ để tự động chấm điểm độ chính xác toán học của các hàm. Để kích hoạt:</p>
+        <pre><code># Mở Terminal (MacOS/Linux) hoặc Command Prompt (Windows)
+# Di chuyển tới thư mục chứa file
+cd /Users/mac/Documents/Code/TUDTK/PROJECT2/Predict-PM2.5-Air-Quality
+
+# Chạy file trực tiếp
+python3 part2/model_comparison.py</code></pre>
+        <p>Nếu bạn thấy thông báo <strong>"RESULTS: 22/22 passed, 0 failed"</strong> thì tức là não bộ của mô hình đang hoạt động cực kỳ chính xác.</p>
+
+        <h3>Cách 2: Chạy Tích Hợp Vào Pipeline Thật (Notebook)</h3>
+        <p>Khi đồng đội của bạn đã code xong phần <code class="highlight">data_pipeline.py</code>, bạn sẽ test bằng cách ráp dữ liệu thật vào thông qua Jupyter Notebook. Đây là đoạn code mẫu bạn sẽ dùng:</p>
+        <pre><code>import pandas as pd
+from model_comparison import run_model_comparison
+
+# 1. (Code của đồng đội) Xử lý dữ liệu ra được X_train, X_test, y_train, y_test
+# ...
+
+# 2. (Code của bạn) Chạy lệnh thần thánh này để train và phân tích TẤT CẢ
+results, comparison_df = run_model_comparison(
+    X_train=X_train, 
+    X_test=X_test, 
+    y_train=y_train, 
+    y_test=y_test, 
+    feature_names=['PM10', 'SO2', 'TEMP', 'PRES', ...], 
+    k_folds=5, 
+    save_figures=True
+)
+
+# Kết quả: Bạn sẽ nhận được 1 bảng pandas DataFrame so sánh độ xịn của các models
+# Đồng thời toàn bộ biểu đồ siêu đẹp sẽ tự động lưu vào thư mục part2/figures/</code></pre>
+    </div>
+
+    <div class="card">
+        <h2>3. Kiến Trúc Sẵn Sàng Cho Phần Nâng Cao (Bonus)</h2>
+        <p>Tôi đã thiết kế một hệ thống "Ổ Cắm" thông minh mang tên <strong><code>BaseModel</code></strong>. Nếu sau này bạn (hoặc nhóm) quyết định làm thêm phần <strong>Kernel Ridge Regression</strong> hoặc <strong>Bayesian Linear Regression</strong> để ăn trọn điểm 10, bạn chỉ cần:</p>
+        <ol>
+            <li>Tạo file <code>advanced_methods.py</code></li>
+            <li>Code class mô hình đó kế thừa từ <code>BaseModel</code>. Cung cấp cho nó hàm <code>fit()</code> và <code>predict()</code>.</li>
+            <li>Lưu file, sau đó quăng nó vào bảng so sánh là nó sẽ tự động chạy!</li>
+        </ol>
+    </div>
+
+</div>
+
+</body>
+</html>
