@@ -1,126 +1,73 @@
-import numpy as np
-import matplotlib.pyplot as plt
 
-def ridge_fit(X, y, lam_list):
-    """
-    Cài đặt Ridge Regression: beta_ridge = (X^T X + lambda*I)^-1 X^T y
-    Vẽ Ridge Trace biểu diễn sự thay đổi của các hệ số theo lambda.
-    """
-    n, p = X.shape
-    has_intercept = np.allclose(X[:, 0], 1)
-    
-    beta_hats = []
-    
-    for l in lam_list:
-        # Ma trận đơn vị cho phần phạt (penalty)
-        I = np.eye(p)
-        if has_intercept:
-            I[0, 0] = 0 # Không phạt hệ số chặn (intercept)
-            
-        # Giải hệ phương trình (X^T X + lambda*I) beta = X^T y
-        A = X.T @ X + l * I
-        b = X.T @ y
-        beta = np.linalg.solve(A, b)
-        beta_hats.append(beta)
-        
-    beta_hats = np.array(beta_hats)
-    
-    # Vẽ Ridge Trace
-    plt.figure(figsize=(10, 6))
-    start_idx = 1 if has_intercept else 0
-    for j in range(start_idx, p):
-        plt.plot(lam_list, beta_hats[:, j], label=f'beta_{j}')
-        
-    plt.xscale('log')
-    plt.xlabel('Giá trị Lambda (log scale)')
-    plt.ylabel('Giá trị hệ số hồi quy (beta)')
-    plt.title('Biểu đồ Ridge Trace')
-    plt.axhline(0, color='black', linestyle='--', alpha=0.3)
-    plt.legend()
-    plt.grid(True, alpha=0.3)
-    plt.show()
-    
-    return beta_hats
+def manual_transpose(M):
+    """Tính ma trận chuyển vị M^T"""
+    rows = len(M)
+    cols = len(M[0])
+    return [[M[j][i] for j in range(rows)] for i in range(cols)]
 
-if __name__ == "__main__":
-    # Demo Ridge và Lasso với dữ liệu giả lập
-    np.random.seed(42)
-    n, p = 100, 10
-    X = np.random.randn(n, p)
-    # Thêm intercept
-    X_with_intercept = np.hstack([np.ones((n, 1)), X])
-    true_beta = np.random.randn(p + 1)
-    y = X_with_intercept @ true_beta + np.random.normal(0, 1, n)
-    
-    lam_list = np.logspace(-2, 4, 100)
-    
-    print("Đang vẽ Ridge Trace...")
-    ridge_fit(X_with_intercept, y, lam_list)
-    
-    print("Đang vẽ Lasso Trace...")
-    lasso_trace(X_with_intercept, y, lam_list)
+def manual_matmul(A, B):
+    """Nhân hai ma trận A * B (hoặc ma trận * vector)"""
+    rows_A = len(A)
+    cols_A = len(A[0])
+    if not isinstance(B[0], list):
+        res = [0.0] * rows_A
+        for i in range(rows_A):
+            for k in range(cols_A):
+                res[i] += A[i][k] * B[k]
+        return res
+    else:
+        rows_B = len(B)
+        cols_B = len(B[0])
+        res = [[0.0 for _ in range(cols_B)] for _ in range(rows_A)]
+        for i in range(rows_A):
+            for j in range(cols_B):
+                for k in range(cols_A):
+                    res[i][j] += A[i][k] * B[k][j]
+        return res
 
-def lasso_fit(X, y, lam, n_iters=1000, tol=1e-4):
-    """
-    Cài đặt Lasso Regression sử dụng thuật toán Coordinate Descent.
-    Nghiệm của Lasso không có dạng closed-form.
-    """
-    n, p = X.shape
-    beta = np.zeros(p)
-    
-    # Khởi tạo beta bằng OLS hoặc 0
-    # Ở đây dùng 0 để minh họa thuật toán co rút (shrinkage)
-    
-    for _ in range(n_iters):
-        beta_old = beta.copy()
-        
-        for j in range(p):
-            # Tính phần dư mà không dùng biến j hiện tại
-            y_pred_no_j = X @ beta - X[:, j] * beta[j]
-            rho_j = X[:, j] @ (y - y_pred_no_j)
-            
-            # Tính chuẩn (norm) của cột X_j
-            norm_j = np.sum(X[:, j]**2)
-            
-            if j == 0 and np.allclose(X[:, 0], 1): # Intercept
-                beta[j] = rho_j / n
-            else:
-                # Soft Thresholding
-                beta[j] = np.sign(rho_j) * max(abs(rho_j) - lam, 0) / (norm_j if norm_j != 0 else 1)
-                
-        # Kiểm tra hội tụ
-        if np.linalg.norm(beta - beta_old) < tol:
-            break
-            
-    return beta
+def manual_solve(A, b):
+    """Giải hệ phương trình Ax = b bằng phương pháp Khử Gauss"""
+    n = len(A)
+    M = [row[:] + [val] for row, val in zip(A, b)]
+    for i in range(n):
+        max_row = i
+        for k in range(i + 1, n):
+            if abs(M[k][i]) > abs(M[max_row][i]):
+                max_row = k
+        M[i], M[max_row] = M[max_row], M[i]
+        for j in range(i + 1, n):
+            ratio = M[j][i] / M[i][i]
+            for k in range(i, n + 1):
+                M[j][k] -= ratio * M[i][k]
+    x = [0.0] * n
+    for i in range(n - 1, -1, -1):
+        s = sum(M[i][j] * x[j] for j in range(i + 1, n))
+        x[i] = (M[i][n] - s) / M[i][i]
+    return x
 
-def lasso_trace(X, y, lam_list):
+def ridge_fit(X, y, alpha):
     """
-    Vẽ Lasso Trace biểu diễn sự thay đổi của các hệ số theo lambda.
+    Tính ước lượng Ridge: beta_ridge = (X^T X + alpha * I)^-1 X^T y
     """
-    n, p = X.shape
-    beta_hats = []
+    X_list = X.tolist() if hasattr(X, "tolist") else X
+    y_list = y.tolist() if hasattr(y, "tolist") else y
+    p = len(X_list[0])
     
-    for l in lam_list:
-        beta = lasso_fit(X, y, l)
-        beta_hats.append(beta)
+    Xt = manual_transpose(X_list)
+    XtX = manual_matmul(Xt, X_list)
+    
+    # Cộng alpha * I vào đường chéo
+    for i in range(p):
+        XtX[i][i] += alpha
         
-    beta_hats = np.array(beta_hats)
+    Xty = manual_matmul(Xt, y_list)
+    beta_ridge = manual_solve(XtX, Xty)
     
-    plt.figure(figsize=(10, 6))
-    has_intercept = np.allclose(X[:, 0], 1)
-    start_idx = 1 if has_intercept else 0
-    
-    for j in range(start_idx, p):
-        plt.plot(lam_list, beta_hats[:, j], label=f'beta_{j}')
-        
-    plt.xscale('log')
-    plt.xlabel('Giá trị Lambda (log scale)')
-    plt.ylabel('Giá trị hệ số hồi quy (beta)')
-    plt.title('Biểu đồ Lasso Trace')
-    plt.axhline(0, color='black', linestyle='--', alpha=0.3)
-    plt.legend()
-    plt.grid(True, alpha=0.3)
-    plt.show()
-    
-    return beta_hats
+    return beta_ridge
+
+def ridge_trace(X, y, alphas):
+    """Tính danh sách các hệ số Ridge ứng với tập alpha"""
+    traces = []
+    for a in alphas:
+        traces.append(ridge_fit(X, y, a))
+    return traces

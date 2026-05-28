@@ -1,89 +1,93 @@
-import numpy as np
-import matplotlib.pyplot as plt
-import scipy.stats as stats
+import math
 
-def residual_plots(X, y, beta_hat):
-    """
-    Vẽ 4 biểu đồ phân tích phần dư.
-    """
-    y_hat = X @ beta_hat
-    residuals = y - y_hat
-    n, p = X.shape  # p ở đây = p+1 (số tham số, gồm cả intercept)
+def manual_transpose(M):
+    """Tính ma trận chuyển vị M^T"""
+    rows = len(M)
+    cols = len(M[0])
+    return [[M[j][i] for j in range(rows)] for i in range(cols)]
 
-    # Hat matrix
-    H = X @ np.linalg.solve(X.T @ X, X.T)  # = X(X^TX)^{-1}X^T
-    h_ii = np.diag(H)
+def manual_matmul(A, B):
+    """Nhân hai ma trận A * B (hoặc ma trận * vector)"""
+    rows_A = len(A)
+    cols_A = len(A[0])
+    if not isinstance(B[0], list):
+        res = [0.0] * rows_A
+        for i in range(rows_A):
+            for k in range(cols_A):
+                res[i] += A[i][k] * B[k]
+        return res
+    else:
+        rows_B = len(B)
+        cols_B = len(B[0])
+        res = [[0.0 for _ in range(cols_B)] for _ in range(rows_A)]
+        for i in range(rows_A):
+            for j in range(cols_B):
+                for k in range(cols_A):
+                    res[i][j] += A[i][k] * B[k][j]
+        return res
 
-    # Ước lượng sigma^2 không chệch
-    sigma2_hat = np.sum(residuals ** 2) / (n - p)
-    sigma_hat = np.sqrt(sigma2_hat)
+def manual_solve(A, b):
+    n = len(A)
+    M = [row[:] + [val] for row, val in zip(A, b)]
+    for i in range(n):
+        max_row = i
+        for k in range(i + 1, n):
+            if abs(M[k][i]) > abs(M[max_row][i]):
+                max_row = k
+        M[i], M[max_row] = M[max_row], M[i]
+        for j in range(i + 1, n):
+            ratio = M[j][i] / M[i][i]
+            for k in range(i, n + 1):
+                M[j][k] -= ratio * M[i][k]
+    x = [0.0] * n
+    for i in range(n - 1, -1, -1):
+        s = sum(M[i][j] * x[j] for j in range(i + 1, n))
+        x[i] = (M[i][n] - s) / M[i][i]
+    return x
 
-    # Phần dư chuẩn hóa (Standardized residuals)
-    denom = sigma_hat * np.sqrt(np.maximum(1 - h_ii, 1e-8))
-    std_residuals = residuals / denom
+def manual_inv(M):
+    n = len(M)
+    res = [[0.0 for _ in range(n)] for _ in range(n)]
+    for j in range(n):
+        e = [1.0 if i == j else 0.0 for i in range(n)]
+        col = manual_solve(M, e)
+        for i in range(n):
+            res[i][j] = col[i]
+    return res
 
-    # ✅ Cook's Distance — công thức chuẩn
-    # D_i = (e_i^2 / (p * sigma^2)) * (h_ii / (1 - h_ii)^2)
-    cooks_d = (residuals ** 2 * h_ii) / \
-              (p * sigma2_hat * (1 - h_ii) ** 2)
+def get_residuals(X, y, beta_hat):
+    y_list = y.tolist() if hasattr(y, "tolist") else y
+    X_list = X.tolist() if hasattr(X, "tolist") else X
+    n = len(y_list)
+    y_hat = manual_matmul(X_list, beta_hat)
+    return [y_list[i] - y_hat[i] for i in range(n)]
 
-    fig, axs = plt.subplots(2, 2, figsize=(14, 10))
-
-    # 1. Residuals vs Fitted (Phần dư vs Giá trị dự báo)
-    axs[0, 0].scatter(y_hat, residuals, alpha=0.5, edgecolors='k')
-    axs[0, 0].axhline(0, color='r', linestyle='--')
-    axs[0, 0].set_title('Residuals vs Fitted (Phần dư & Dự báo)')
-    axs[0, 0].set_xlabel('Giá trị dự báo ($\\hat{y}$)')
-    axs[0, 0].set_ylabel('Phần dư ($\\hat{\\varepsilon}$)')
-    axs[0, 0].grid(True, alpha=0.3)
-
-    # 2. Normal Q-Q
-    stats.probplot(std_residuals, dist="norm", plot=axs[0, 1])
-    axs[0, 1].set_title('Normal Q-Q (Phân phối chuẩn)')
-    axs[0, 1].grid(True, alpha=0.3)
-
-    # 3. Scale-Location
-    axs[1, 0].scatter(y_hat, np.sqrt(np.abs(std_residuals)),
-                      alpha=0.5, edgecolors='k')
-    axs[1, 0].set_title('Scale-Location (Độ phân tán)')
-    axs[1, 0].set_xlabel('Giá trị dự báo ($\\hat{y}$)')
-    axs[1, 0].set_ylabel('$\\sqrt{|Phần\\ dư\\ chuẩn\\ hóa|}$')
-    axs[1, 0].grid(True, alpha=0.3)
-
-    # 4. Cook's Distance
-    threshold = 4 / n
-    axs[1, 1].stem(range(n), cooks_d, markerfmt=",", basefmt=" ")
-    axs[1, 1].axhline(threshold, color='r', linestyle='--',
-                      label=f'Ngưỡng 4/n = {threshold:.3f}')
-
-    influential = np.where(cooks_d > threshold)[0]
-    if len(influential) > 0:
-        axs[1, 1].scatter(influential, cooks_d[influential],
-                          color='red', zorder=5,
-                          label=f'{len(influential)} điểm ảnh hưởng')
-
-    axs[1, 1].set_title("Khoảng cách Cook (Cook's Distance)")
-    axs[1, 1].set_xlabel('Chỉ số quan sát')
-    axs[1, 1].set_ylabel("Khoảng cách Cook")
-    axs[1, 1].legend()
-    axs[1, 1].grid(True, alpha=0.3)
-
-    plt.tight_layout()
-    plt.show()
-
-    return std_residuals, cooks_d
-
-if __name__ == "__main__":
-    # Demo phân tích phần dư với dữ liệu giả lập
-    np.random.seed(42)
-    n, p = 100, 3
-    X_base = np.random.randn(n, p)
-    X = np.hstack([np.ones((n, 1)), X_base])
-    true_beta = np.array([2, 1.5, -1, 0.5])
-    y = X @ true_beta + np.random.normal(0, 1, n)
+def get_standardized_residuals(X, residuals, sigma2_hat):
+    X_list = X.tolist() if hasattr(X, "tolist") else X
+    n = len(X_list)
+    p = len(X_list[0])
     
-    # Ước lượng OLS (dùng công thức thủ công)
-    beta_hat = np.linalg.solve(X.T @ X, X.T @ y)
+    Xt = manual_transpose(X_list)
+    XtX_inv = manual_inv(manual_matmul(Xt, X_list))
     
-    # Vẽ biểu đồ
-    residual_plots(X, y, beta_hat)
+    h = []
+    for i in range(n):
+        xi = X_list[i]
+        # h_ii = xi^T * XtX_inv * xi
+        tmp = manual_matmul([xi], XtX_inv)[0]
+        hii = sum(tmp[k] * xi[k] for k in range(p))
+        h.append(hii)
+        
+    std_res = []
+    for i in range(n):
+        denom = math.sqrt(max(sigma2_hat * (1 - h[i]), 1e-12))
+        std_res.append(residuals[i] / denom)
+        
+    return std_res, h
+
+def cook_distance(std_res, h, p):
+    d = []
+    for i in range(len(std_res)):
+        val = (std_res[i]**2 / p) * (h[i] / (1 - h[i]))
+        d.append(val)
+    return d
