@@ -1,59 +1,49 @@
-import numpy as np
+import random
+from ols_implementation import ols_fit, manual_matmul
 
 def kfold_cv(X, y, k, random_state=42):
     """
-    k-Fold Cross-Validation, tính CV Score = mean MSE (Sai số bình phương trung bình).
+    k-Fold CV sử dụng OLS.
     """
-    n = len(y)
-    rng = np.random.default_rng(random_state)  # Đảm bảo kết quả có thể tái lập
-    indices = rng.permutation(n)
+    X_list = X.tolist() if hasattr(X, "tolist") else X
+    y_list = y.tolist() if hasattr(y, "tolist") else y
+    n = len(y_list)
+    
+    # Tạo danh sách chỉ số và trộn ngẫu nhiên
+    indices = list(range(n))
+    random.seed(random_state)
+    random.shuffle(indices)
 
-    # Chia thành k fold bằng nhau
-    fold_sizes = np.full(k, n // k, dtype=int)
-    fold_sizes[:n % k] += 1
-
+    # Chia fold
     folds = []
-    current = 0
-    for size in fold_sizes:
-        folds.append(indices[current:current + size])
-        current += size
+    fold_size = n // k
+    for i in range(k):
+        start = i * fold_size
+        end = (i + 1) * fold_size if i != k - 1 else n
+        folds.append(indices[start:end])
 
     mse_list = []
     for i in range(k):
-        test_idx  = folds[i]
-        train_idx = np.concatenate([folds[j] for j in range(k) if j != i])
+        test_idx = folds[i]
+        train_idx = []
+        for j in range(k):
+            if j != i:
+                train_idx.extend(folds[j])
 
-        X_train, y_train = X[train_idx], y[train_idx]
-        X_test,  y_test  = X[test_idx],  y[test_idx]
+        # Tạo tập Train/Test theo indices
+        X_train = [X_list[idx] for idx in train_idx]
+        y_train = [y_list[idx] for idx in train_idx]
+        
+        X_test = [X_list[idx] for idx in test_idx]
+        y_test = [y_list[idx] for idx in test_idx]
 
-        # OLS từ đầu
-        XtX = X_train.T @ X_train
-        Xty = X_train.T @ y_train
-        beta_hat = np.linalg.solve(XtX, Xty)
+        # Thực hiện OLS trên fold (sử dụng ols_fit đã có pivoting)
+        beta_hat, _ = ols_fit(X_train, y_train)
 
-        y_pred = X_test @ beta_hat
-        mse_list.append(np.mean((y_test - y_pred) ** 2))
+        # Tính MSE
+        y_pred = manual_matmul(X_test, beta_hat)
+        mse = sum((y_test[m] - y_pred[m])**2 for m in range(len(y_test))) / len(y_test)
+        mse_list.append(mse)
 
-    cv_score = np.mean(mse_list)
-
-    print(f"=== Kết quả {k}-Fold CV ===")
-    for i, mse in enumerate(mse_list):
-        print(f"  Fold {i+1}: MSE = {mse:.4f}")
-    print(f"  CV Score (Mean MSE) = {cv_score:.4f}")
-
-    return cv_score, mse_list
-
-if __name__ == "__main__":
-    # Demo k-Fold Cross-Validation với dữ liệu giả lập
-    np.random.seed(42)
-    n, p = 150, 5
-    X_base = np.random.randn(n, p)
-    X = np.hstack([np.ones((n, 1)), X_base])
-    true_beta = np.array([5, 2, -3, 1, 0, -1])
-    y = X @ true_beta + np.random.normal(0, 2, n)
-    
-    # Chạy CV với k=5
-    kfold_cv(X, y, k=5)
-    
-    # Thử với k=10
-    kfold_cv(X, y, k=10)
+    avg_mse = sum(mse_list) / len(mse_list)
+    return avg_mse, mse_list
