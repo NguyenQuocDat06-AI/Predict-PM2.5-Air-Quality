@@ -194,9 +194,8 @@ def vif(X):
 
 def run_monte_carlo(X, true_beta, sigma=1.0, n_sims=1000):
     """Mô phỏng Monte Carlo kiểm chứng BLUE (Gauss-Markov)"""
-    import numpy as np # Import cục bộ để sinh số ngẫu nhiên
+    import random
     X_list = X.tolist() if hasattr(X, "tolist") else X
-    n = len(X_list)
     p = len(X_list[0])
     
     Xt = manual_transpose(X_list)
@@ -205,9 +204,9 @@ def run_monte_carlo(X, true_beta, sigma=1.0, n_sims=1000):
     
     ols_betas = []
     for _ in range(n_sims):
-        eps = np.random.normal(0, sigma, n).tolist()
+        eps = [random.gauss(0, sigma) for _ in range(len(X_list))]
         # y = X*beta + eps
-        y = [manual_matmul([X_list[i]], true_beta)[0] + eps[i] for i in range(n)]
+        y = [manual_matmul([X_list[i]], true_beta)[0] + eps[i] for i in range(len(X_list))]
         b_ols = manual_matmul(W_ols, y)
         ols_betas.append(b_ols)
         
