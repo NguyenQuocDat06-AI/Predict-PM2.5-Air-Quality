@@ -321,6 +321,55 @@ class DataPipeline:
             df[f'log_{col}'] = np.log1p(df[col])
         return df
 
+    # BƯỚC 9.5: Feature Engineering (Lags, Interactions, Polynomials)
+    @staticmethod
+    def _add_engineered_features(df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Thêm các biến phái sinh để giúp mô hình tuyến tính (OLS, Ridge, Lasso) vượt qua giới hạn tuyến tính, 
+        nắm bắt được các mối quan hệ phi tuyến và chuỗi thời gian, từ đó tăng vọt độ chính xác (R²).
+        
+        Lý do cụ thể cho 3 nhóm đặc trưng:
+        
+        1. Biến Trễ (Time-Lag Features):
+           - Lý do: Bụi PM2.5 không sinh ra hay biến mất ngay lập tức mà tích tụ theo thời gian. Nồng độ 
+             của giờ hiện tại bị ảnh hưởng nặng nề bởi 1-2 giờ trước, hoặc mang tính chu kỳ (cùng giờ ngày hôm qua).
+           - Tác dụng: Cho phép mô hình tuyến tính tự biến thành mô hình tự hồi quy (Autoregressive), 
+             nhìn được quá khứ để dự báo tương lai thay vì chỉ dựa vào thời tiết hiện tại.
+
+        2. Biến Tương Tác (Interaction Terms):
+           - Lý do: Các yếu tố tự nhiên tương tác với nhau chứ không hoạt động độc lập. Ví dụ: Gió mạnh
+             kết hợp với Mưa rào (RAIN x WSPM) sẽ cuốn trôi bụi nhanh gấp bội so với chỉ có Gió mà không có Mưa.
+           - Tác dụng: Giúp mô hình tuyến tính (vốn mặc định coi các biến là độc lập) có thể học được 
+             sự cộng hưởng vật lý của thời tiết.
+
+        3. Biến Đa Thức (Polynomial Features):
+           - Lý do: Mối quan hệ giữa thời tiết và bụi thường không phải là đường thẳng. Ví dụ, nhiệt độ
+             có dạng Parabol (chữ U): Quá lạnh (đốt sưởi) sinh nhiều bụi, ấm áp ít bụi, quá nóng lại nhiều bụi.
+           - Tác dụng: Việc bình phương (bậc 2) các biến Nhiệt độ / Sức gió giúp mô hình vẽ được các 
+             đường cong phi tuyến để khớp với thực tế.
+        """
+        df = df.copy()
+        
+        # 1. Time-Lag Features (Biến trễ chuỗi thời gian)
+        col_to_lag = 'log_PM2.5' if 'log_PM2.5' in df.columns else 'PM2.5'
+        df[f'{col_to_lag}_lag_1'] = df[col_to_lag].shift(1)
+        df[f'{col_to_lag}_lag_2'] = df[col_to_lag].shift(2)
+        df[f'{col_to_lag}_lag_24'] = df[col_to_lag].shift(24)
+        
+        # Lấp đầy các giá trị NaN do phép shift sinh ra
+        lag_cols = [f'{col_to_lag}_lag_1', f'{col_to_lag}_lag_2', f'{col_to_lag}_lag_24']
+        df[lag_cols] = df[lag_cols].bfill()
+
+        # 2. Interaction Terms (Biến tương tác)
+        df['TEMP_x_WSPM'] = df['TEMP'] * df['WSPM']
+        df['RAIN_x_WSPM'] = df['RAIN'] * df['WSPM']
+        
+        # 3. Polynomial Features (Biến đa thức bậc 2)
+        df['TEMP_sq'] = df['TEMP'] ** 2
+        df['WSPM_sq'] = df['WSPM'] ** 2
+        
+        return df
+
     # BƯỚC 10: One-Hot Encoding cho các biến phân loại định tính
     def _ohe_fit(self, df: pd.DataFrame) -> pd.DataFrame:
         """
@@ -404,6 +453,44 @@ class DataPipeline:
         df[self.scale_cols] = self.scaler.transform(df[self.scale_cols])
         return df
 
+    def _fit_qr_decomposition(self, df: pd.DataFrame) -> list[str]:
+        """
+        Loại bỏ đa cộng tuyến tuyệt đối bằng Phân rã QR (QR Decomposition).
+        
+        Lý do:
+        - Trong quá trình Feature Engineering (tạo biến Lag, Polynomial, Interactions) và One-Hot Encoding, 
+          đã vô tình tạo ra các biến bị trùng lặp thông tin hoàn hảo (Ví dụ: Tổng các biến One-Hot của mùa = 1, 
+          hoặc các biến tương tác bị nội suy lẫn nhau).
+        - Khi ma trận đầu vào (Design Matrix) có các cột bị phụ thuộc tuyến tính tuyệt đối, định thức của ma trận (X^T X) 
+          sẽ bằng 0, dẫn đến lỗi Singular Matrix khi thuật toán OLS cố gắng tính ma trận nghịch đảo.
+        - Phân rã QR với kỹ thuật Pivoting giúp trích xuất ra một tập hợp các cột (vector) độc lập tuyến tính tối đa (bằng đúng Hạng - Rank của ma trận), 
+          vứt bỏ các cột thừa thãi gây lỗi mà không làm giảm lượng thông tin của mô hình.
+        """
+        from scipy.linalg import qr
+        import numpy as np
+        target = 'PM2.5'
+        features = [c for c in df.columns if c != target]
+        
+        # 1. Constant cols
+        constant_cols = [c for c in features if df[c].nunique() <= 1]
+        features_no_const = [c for c in features if c not in constant_cols]
+        if constant_cols:
+            print(f"    -> Xoá cột hằng số: {constant_cols}")
+            
+        X_no_const = df[features_no_const].values
+        
+        # 2. QR
+        rank = np.linalg.matrix_rank(X_no_const)
+        _, _, P = qr(X_no_const, mode='economic', pivoting=True)
+        independent_indices = P[:rank]
+        independent_cols = [features_no_const[i] for i in independent_indices]
+        
+        dropped = set(features) - set(independent_cols)
+        if dropped:
+            print(f"    -> Xoá cột phụ thuộc tuyến tính (Singular): {list(dropped)}")
+            
+        return independent_cols + [target] if target in df.columns else independent_cols
+
     def fit(self, df: pd.DataFrame) -> pd.DataFrame:
         """
         Fit pipeline trên tập TRAIN và trả về DataFrame đã xử lý.
@@ -457,6 +544,10 @@ class DataPipeline:
         print(f"  [Step 9] Log1p transform cho: {LOG_COLS}")
         df = self._log_transform(df)
 
+        # Bước 9.5: Feature Engineering
+        print("  [Step 9.5] Feature Engineering (Lags, Interactions, Polynomials)")
+        df = self._add_engineered_features(df)
+
         # Bước 10: One-Hot Encoding — fit categories từ train
         print("  [Step 10] One-Hot Encoding cho các biến phân loại (fit categories từ train)")
         df = self._ohe_fit(df)
@@ -465,7 +556,15 @@ class DataPipeline:
         print("  [Step 11] StandardScaler — fit trên train (tránh data leakage)")
         df = self._scale_fit(df)
 
+        # Bước 12: Xoá biến hằng số và loại bỏ đa cộng tuyến tuyệt đối (QR Decomposition)
+        print("  [Step 12] Loại bỏ đa cộng tuyến tuyệt đối bằng Phân rã QR")
+        self._final_cols = self._fit_qr_decomposition(df)
+        df = df[self._final_cols]
+        
         self._fitted = True
+        # Giữ đúng các cột đã qua phân rã QR ở tập train
+        df = df[[c for c in self._final_cols if c in df.columns]]
+
         missing_left = df.isnull().sum().sum()
         print("=" * 60)
         print(f"  fit() hoàn tất | Shape: {df.shape} | Missing còn: {missing_left}")
@@ -475,8 +574,6 @@ class DataPipeline:
     def transform(self, df: pd.DataFrame) -> pd.DataFrame:
         """
         Transform tập TEST dùng tham số đã học từ fit() trên train.
-
-        KHÔNG fit lại bất kỳ tham số nào để tránh data leakage.
 
         Parameters
         ----------
@@ -503,8 +600,11 @@ class DataPipeline:
         df = self._impute_wd(df)
         df = self._winsorize_transform(df)           # ← bounds từ train
         df = self._log_transform(df)
+        df = self._add_engineered_features(df)       # ← Feature Engineering
         df = self._ohe_transform(df)                 # ← categories từ train
         df = self._scale_transform(df)               # ← scaler từ train
+
+        df = df[[c for c in self._final_cols if c in df.columns]]
 
         missing_left = df.isnull().sum().sum()
         print("=" * 60)
@@ -512,7 +612,7 @@ class DataPipeline:
         print("=" * 60)
         return df
 
-# CHẠY THỬ ĐỘC LẬP
+# CHẠY THỬ 
 if __name__ == '__main__':
     import os
 
