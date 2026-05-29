@@ -58,7 +58,7 @@ class TestPart1(unittest.TestCase):
         X_n = [[1, 0], [1, 1], [1, 2], [1, 3]]
         y_n = [1.1, 1.9, 3.1, 3.9] 
         beta_n, sigma2_n = ols_fit(X_n, y_n)
-        # RSS = 0.0324, df = 2 => Sigma2 = 0.0162
+        # RSS = 0.032, df = 2 => Sigma2 = 0.016
         self.assertAlmostEqual(sigma2_n, 0.016, places=3)
 
     def test_hat_matrix(self):
