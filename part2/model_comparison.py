@@ -372,6 +372,7 @@ class LassoModel(BaseModel):
         self.max_iter = max_iter
         self.tol = tol
         self.beta_hat: np.ndarray | None = None
+        self.initial_beta: np.ndarray | None = None
         self._n_features: int = 0
         self.n_iter_: int = 0
 
@@ -380,20 +381,29 @@ class LassoModel(BaseModel):
         n, p_full = X_b.shape
         self._n_features = X.shape[1]
 
-        # Initialize β with zeros
-        beta = np.zeros(p_full)
+        # Initialize β
+        if hasattr(self, 'initial_beta') and self.initial_beta is not None:
+            beta = self.initial_beta.copy()
+        else:
+            beta = np.zeros(p_full)
+            
         # Pre-compute column norms (squared) for efficiency
         col_norms_sq = np.sum(X_b ** 2, axis=0) / n
+        
+        # Calculate initial full residual
+        r = y - X_b @ beta
 
         for iteration in range(self.max_iter):
             beta_old = beta.copy()
 
             for j in range(p_full):
-                # Partial residual: exclude contribution of feature j
-                r_j = y - X_b @ beta + X_b[:, j] * beta[j]
+                # Temporarily add the current feature's contribution back to the residual
+                # This gives the partial residual r_j
+                beta_j_old = beta[j]
+                r = r + X_b[:, j] * beta_j_old
 
                 # Unnormalized update: z_j = (1/n) × Xⱼᵀrⱼ
-                z_j = X_b[:, j] @ r_j / n
+                z_j = X_b[:, j] @ r / n
 
                 if j == 0:
                     # Don't regularize the intercept
@@ -401,6 +411,9 @@ class LassoModel(BaseModel):
                 else:
                     # Apply soft-thresholding for L1 penalty
                     beta[j] = _soft_threshold(z_j, self.lam) / col_norms_sq[j] if col_norms_sq[j] > 0 else 0.0
+
+                # Subtract the new feature's contribution from the residual
+                r = r - X_b[:, j] * beta[j]
 
             # Check convergence: max absolute change in coefficients
             if np.max(np.abs(beta - beta_old)) < self.tol:
@@ -486,9 +499,14 @@ def kfold_cv(
         folds.append(indices[start:start + size])
         start += size
 
+    # Sort lambdas descending for Warm Start (large penalty to small)
+    lambdas_sorted = np.sort(lambdas)[::-1]
     cv_results = {}
+    
+    # Store previous betas for each fold
+    k_previous_betas = [None] * k
 
-    for lam in lambdas:
+    for lam in lambdas_sorted:
         fold_mses = []
         for i in range(k):
             # Validation fold = i, training folds = rest
@@ -499,7 +517,14 @@ def kfold_cv(
             X_val, y_val = X[val_idx], y[val_idx]
 
             model = model_class(lam=lam, **model_kwargs)
+            if hasattr(model, 'initial_beta'):
+                model.initial_beta = k_previous_betas[i]
+                
             model.fit(X_tr, y_tr)
+            
+            if hasattr(model, 'beta_hat'):
+                k_previous_betas[i] = model.beta_hat.copy()
+
             y_pred = model.predict(X_val)
 
             mse = float(np.mean((y_val - y_pred) ** 2))
@@ -894,7 +919,9 @@ def run_model_comparison(
         comparison_df: DataFrame with all metrics
     """
     results = {}
-    lambdas = np.logspace(-4, 4, 50)
+    # Dải lambda tách biệt cho Ridge (chia nhỏ) và Lasso (chia n)
+    lambdas_ridge = np.logspace(0, 5, 50)
+    lambdas_lasso = np.logspace(-5, 1, 50)
 
     # ── Step 1: OLS Basic ────────────────────────────────────
     print("\n[1/6] Training OLS Basic...")
@@ -923,7 +950,7 @@ def run_model_comparison(
 
     # ── Step 3 & 4: Ridge with CV ────────────────────────────
     print(f"\n[3/6] Cross-validating Ridge (k={k_folds})...")
-    best_lam_ridge, cv_ridge = kfold_cv(X_train, y_train, RidgeModel, lambdas, k=k_folds)
+    best_lam_ridge, cv_ridge = kfold_cv(X_train, y_train, RidgeModel, lambdas_ridge, k=k_folds)
     plot_cv_curve(cv_ridge, best_lam_ridge, "Ridge", save=save_figures)
 
     ridge = RidgeModel(lam=best_lam_ridge)
@@ -939,7 +966,7 @@ def run_model_comparison(
     # ── Step 5 & 6: Lasso with CV ────────────────────────────
     print(f"\n[4/6] Cross-validating Lasso (k={k_folds})...")
     best_lam_lasso, cv_lasso = kfold_cv(
-        X_train, y_train, LassoModel, lambdas, k=k_folds, max_iter=2000
+        X_train, y_train, LassoModel, lambdas_lasso, k=k_folds, max_iter=2000
     )
     plot_cv_curve(cv_lasso, best_lam_lasso, "Lasso", save=save_figures)
 
@@ -966,7 +993,9 @@ def run_model_comparison(
     best_model = results[best_name]["model"]
     print(f"\n[6/6] Analyzing best model: {best_name}")
 
-    run_residual_analysis(X_test, y_test, best_model, save=save_figures)
+    # Residual Analysis and Feature Importance should be based on the Training set
+    # (or feature importance based on the model weights, which were fitted on train)
+    run_residual_analysis(X_train, y_train, best_model, save=save_figures)
     plot_feature_importance(feature_names, best_model, save=save_figures)
 
     # ── Summary ──────────────────────────────────────────────
@@ -1095,5 +1124,3 @@ if __name__ == "__main__":
     success = _run_tests()
     if not success:
         exit(1)
-
-
