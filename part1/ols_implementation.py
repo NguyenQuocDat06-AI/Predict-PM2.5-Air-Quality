@@ -11,10 +11,7 @@ def manual_matmul(A, B):
     """Nhân hai ma trận A * B (hoặc ma trận * vector) bằng vòng lặp"""
     rows_A = len(A)
     cols_A = len(A[0])
-    
-    # Kiểm tra B là vector hay ma trận
     if not isinstance(B[0], list):
-        # B là vector 1 chiều
         if cols_A != len(B):
             raise ValueError("Kích thước không khớp")
         res = [0.0] * rows_A
@@ -23,7 +20,6 @@ def manual_matmul(A, B):
                 res[i] += A[i][k] * B[k]
         return res
     else:
-        # B là ma trận 2 chiều
         rows_B = len(B)
         cols_B = len(B[0])
         if cols_A != rows_B:
@@ -56,7 +52,6 @@ def manual_solve(A, b):
         M[i], M[max_row] = M[max_row], M[i]
 
         if abs(M[i][i]) < 1e-15:
-            # Nếu hệ vô nghiệm hoặc vô số nghiệm, trả về vector 0 hoặc báo lỗi
             raise ValueError("Ma trận suy biến")
 
         for j in range(i+1, n):
@@ -84,7 +79,6 @@ def manual_inv(M):
 
 def ols_fit(X, y):
     """Tính beta_hat = (X^T X)^-1 X^T y"""
-    # Chuyển ndarray về list
     X_list = X.tolist() if hasattr(X, "tolist") else X
     y_list = y.tolist() if hasattr(y, "tolist") else y
     
@@ -178,7 +172,6 @@ def vif(X):
     
     vif_vals = []
     for j in range(start_idx, p):
-        # Biến j là target, các biến còn lại là predictors
         X_other = []
         y_j = []
         for row in X_list:

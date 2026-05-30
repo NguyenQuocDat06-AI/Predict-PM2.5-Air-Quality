@@ -10,8 +10,7 @@ def ridge_fit(X, y, alpha):
     
     Xt = manual_transpose(X_list)
     XtX = manual_matmul(Xt, X_list)
-    
-    # Cộng alpha * I vào đường chéo
+
     for i in range(p):
         XtX[i][i] += alpha
         
