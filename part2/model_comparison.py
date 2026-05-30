@@ -120,10 +120,12 @@ class OLSBasicModel(BaseModel):
         n, p_full = X_b.shape
         self._n_features = X.shape[1]
 
-        # β̂ = (XᵀX)⁻¹Xᵀy — solved via LU decomposition for stability
         XtX = X_b.T @ X_b
         Xty = X_b.T @ y
-        self.beta_hat = np.linalg.solve(XtX, Xty)
+        try:
+            self.beta_hat = np.linalg.solve(XtX, Xty)
+        except np.linalg.LinAlgError:
+            self.beta_hat = np.linalg.lstsq(XtX, Xty, rcond=1e-15)[0]
 
         # σ̂² = RSS / (n − p − 1)
         residuals = y - X_b @ self.beta_hat
@@ -197,7 +199,12 @@ def compute_vif(X: np.ndarray) -> np.ndarray:
         y_j = X[:, j]
 
         X_b = _add_intercept(X_other)
-        beta = np.linalg.solve(X_b.T @ X_b, X_b.T @ y_j)
+        XtX = X_b.T @ X_b
+        Xy = X_b.T @ y_j
+        try:
+            beta = np.linalg.solve(XtX, Xy)
+        except np.linalg.LinAlgError:
+            beta = np.linalg.lstsq(XtX, Xy, rcond=1e-15)[0]
         y_hat = X_b @ beta
         r2_j = compute_r2(y_j, y_hat)
 
@@ -792,6 +799,9 @@ def plot_feature_importance(feature_names, model, top_n=20, save=True):
     approximate the standardized coefficients. Sort by absolute magnitude.
     Color: blue for positive, red for negative.
     """
+    if "Kernel Ridge" in model.name:
+        print("[Feature Importance] Skipping feature importance plot for non-linear Kernel Ridge model.")
+        return
     coefs = model.get_coefficients()
     if len(feature_names) != len(coefs):
         feature_names = [f"Feature_{i}" for i in range(len(coefs))]
@@ -816,6 +826,90 @@ def plot_feature_importance(feature_names, model, top_n=20, save=True):
 
     if save:
         fname = os.path.join(FIGURES_DIR, "feature_importance.png")
+        fig.savefig(fname, dpi=150, bbox_inches="tight")
+        print(f"  → Saved: {fname}")
+    plt.show()
+
+
+def plot_learning_curve(
+    X_train: np.ndarray,
+    y_train: np.ndarray,
+    X_test: np.ndarray,
+    y_test: np.ndarray,
+    model: BaseModel,
+    sizes: np.ndarray = None,
+    save: bool = True,
+) -> None:
+    """
+    Vẽ đường học tập (Learning Curve) để đánh giá Overfitting/Underfitting.
+    Tính toán R² và RMSE trên tập Train và tập Test tương ứng với các kích thước
+    tập huấn luyện tăng dần để đánh giá khả năng tổng quát hóa của mô hình.
+    """
+    import copy
+    if sizes is None:
+        sizes = np.linspace(0.1, 1.0, 10)
+    
+    n = len(X_train)
+    train_r2_scores = []
+    test_r2_scores = []
+    train_rmse_scores = []
+    test_rmse_scores = []
+    train_sizes = []
+    
+    print(f"\n[Learning Curve] Generating learning curve for {model.name}...")
+    for pct in sizes:
+        size = int(pct * n)
+        if size < 10:
+            continue
+        train_sizes.append(size)
+        
+        # Vì đây là dữ liệu chuỗi thời gian, việc lấy size dòng đầu tiên mô phỏng
+        # cách mô hình hoạt động khi lượng dữ liệu tích lũy tăng dần theo thời gian.
+        X_sub = X_train[:size]
+        y_sub = y_train[:size]
+        
+        # Tránh sửa đổi mô hình gốc, dùng copy.deepcopy
+        model_copy = copy.deepcopy(model)
+        model_copy.fit(X_sub, y_sub)
+        
+        y_train_pred = model_copy.predict(X_sub)
+        y_test_pred = model_copy.predict(X_test)
+        
+        train_r2 = compute_r2(y_sub, y_train_pred)
+        test_r2 = compute_r2(y_test, y_test_pred)
+        train_rmse = compute_rmse(y_sub, y_train_pred)
+        test_rmse = compute_rmse(y_test, y_test_pred)
+        
+        train_r2_scores.append(train_r2)
+        test_r2_scores.append(test_r2)
+        train_rmse_scores.append(train_rmse)
+        test_rmse_scores.append(test_rmse)
+
+    fig, axes = plt.subplots(1, 2, figsize=(14, 5))
+    
+    # 1. Biểu đồ R²
+    axes[0].plot(train_sizes, train_r2_scores, 'o-', color='#D32F2F', linewidth=1.5, label='Train R²')
+    axes[0].plot(train_sizes, test_r2_scores, 's-', color='#1976D2', linewidth=1.5, label='Test R²')
+    axes[0].set_xlabel('Training Set Size', fontsize=11)
+    axes[0].set_ylabel('R² Score', fontsize=11)
+    axes[0].set_title('R² Score vs Training Size', fontsize=12, fontweight='bold')
+    axes[0].legend(fontsize=10)
+    axes[0].grid(True, alpha=0.3)
+    
+    # 2. Biểu đồ RMSE
+    axes[1].plot(train_sizes, train_rmse_scores, 'o-', color='#D32F2F', linewidth=1.5, label='Train RMSE')
+    axes[1].plot(train_sizes, test_rmse_scores, 's-', color='#1976D2', linewidth=1.5, label='Test RMSE')
+    axes[1].set_xlabel('Training Set Size', fontsize=11)
+    axes[1].set_ylabel('RMSE', fontsize=11)
+    axes[1].set_title('RMSE vs Training Size', fontsize=12, fontweight='bold')
+    axes[1].legend(fontsize=10)
+    axes[1].grid(True, alpha=0.3)
+    
+    plt.suptitle(f"Learning Curves (Bias-Variance Diagnostics) — {model.name}", fontsize=14, fontweight='bold')
+    plt.tight_layout()
+    
+    if save:
+        fname = os.path.join(FIGURES_DIR, f"learning_curve.png")
         fig.savefig(fname, dpi=150, bbox_inches="tight")
         print(f"  → Saved: {fname}")
     plt.show()
@@ -983,6 +1077,26 @@ def run_model_comparison(
     print(f"  ✓ Best λ = {best_lam_lasso:.4g}")
     print(f"  ✓ {len(zero_coefs)} features zeroed out: {zero_coefs[:5]}{'...' if len(zero_coefs) > 5 else ''}")
 
+    # ── Step 6.1: Kernel Ridge (Advanced - Bonus) ────────────
+    print("\n[Bonus 1/2] Training Kernel Ridge (RBF)...")
+    from advanced_methods import KernelRidgeModel
+    krr = KernelRidgeModel(lam=0.1, length_scale=10.0, subsample_limit=3000)
+    krr.fit(X_train, y_train)
+    results["Kernel Ridge"] = {
+        "model": krr
+    }
+    print(f"  ✓ Kernel Ridge fitted. R² (train) = {compute_r2(y_train, krr.predict(X_train)):.4f}")
+
+    # ── Step 6.2: Bayesian Linear (Advanced - Bonus) ─────────
+    print("\n[Bonus 2/2] Training Bayesian Linear...")
+    from advanced_methods import BayesianLinearModel
+    bayes = BayesianLinearModel(alpha=1.0)
+    bayes.fit(X_train, y_train)
+    results["Bayesian Linear"] = {
+        "model": bayes
+    }
+    print(f"  ✓ Bayesian Linear fitted. R² (train) = {compute_r2(y_train, bayes.predict(X_train)):.4f}")
+
     # ── Step 7: Comparison table ─────────────────────────────
     print("\n[5/6] Comparing models on test set...")
     models_dict = {name: info["model"] for name, info in results.items()}
@@ -996,6 +1110,7 @@ def run_model_comparison(
     # Residual Analysis and Feature Importance should be based on the Training set
     # (or feature importance based on the model weights, which were fitted on train)
     run_residual_analysis(X_train, y_train, best_model, save=save_figures)
+    plot_learning_curve(X_train, y_train, X_test, y_test, best_model, save=save_figures)
     plot_feature_importance(feature_names, best_model, save=save_figures)
 
     # ── Summary ──────────────────────────────────────────────

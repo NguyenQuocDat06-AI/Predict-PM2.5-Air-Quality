@@ -36,8 +36,8 @@ POLLUTANT_COLS = ['PM2.5', 'PM10', 'SO2', 'NO2', 'CO', 'O3']
 METEO_COLS     = ['TEMP', 'PRES', 'DEWP', 'RAIN', 'WSPM']
 NUM_COLS       = POLLUTANT_COLS + METEO_COLS
 
-# Biến định tính danh nghĩa (nominal) — cần One-Hot Encoding (bao gồm hướng gió và các biến thời gian):
-NOMINAL_COLS   = ['wd', 'year', 'month', 'hour', 'day']
+# Biến định tính danh nghĩa (nominal) — cần One-Hot Encoding (bao gồm hướng gió và các biến thời gian đã gom nhóm):
+NOMINAL_COLS   = ['season', 'day_of_week', 'time_of_day', 'wd']
 
 # Biến cần log-transform (phân phối lệch phải mạnh, skew > 3):
 LOG_COLS       = ['PM2.5', 'SO2', 'CO', 'RAIN']
@@ -370,10 +370,56 @@ class DataPipeline:
         
         return df
 
+    # BƯỚC 9.6: Gom nhóm biến thời gian (Binning) theo thiết kế của Notebook
+    @staticmethod
+    def _bin_time_features(df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Gom nhóm (Binning) các biến thời gian theo đúng thiết kế của Notebook:
+          - month -> 4 Mùa (season)
+          - day -> 7 Thứ trong tuần (day_of_week)
+          - hour -> 4 Buổi trong ngày (time_of_day)
+          - year -> Giữ nguyên làm dạng số để bắt xu hướng dài hạn (Trend)
+        """
+        df = df.copy()
+        
+        # 1. YEAR: Giữ nguyên dạng số nguyên để bắt xu hướng dài hạn
+        if 'year' in df.columns:
+            df['year'] = df['year'].astype(int)
+            
+        # 2. MONTH -> season (Xuan, Ha, Thu, Dong)
+        if 'month' in df.columns:
+            conditions_month = [
+                df['month'].isin([1, 2, 3]),
+                df['month'].isin([4, 5, 6]),
+                df['month'].isin([7, 8, 9]),
+                df['month'].isin([10, 11, 12])
+            ]
+            choices_month = ['Xuan', 'Ha', 'Thu', 'Dong']
+            df['season'] = np.select(conditions_month, choices_month, default='Khac')
+            
+        # 3. DAY -> day_of_week (0=Thứ 2, 6=Chủ Nhật)
+        # Sử dụng thuộc tính dayofweek trực tiếp từ DatetimeIndex
+        df['day_of_week'] = df.index.dayofweek.astype(str)
+        
+        # 4. HOUR -> time_of_day (Sang, Chieu, Toi, Dem)
+        if 'hour' in df.columns:
+            conditions_hour = [
+                (df['hour'] >= 6) & (df['hour'] < 12),   # Sáng
+                (df['hour'] >= 12) & (df['hour'] < 18),  # Chiều
+                (df['hour'] >= 18) & (df['hour'] < 22),  # Tối
+                (df['hour'] >= 22) | (df['hour'] < 6)    # Đêm
+            ]
+            choices_hour = ['Sang', 'Chieu', 'Toi', 'Dem']
+            df['time_of_day'] = np.select(conditions_hour, choices_hour, default='Khac')
+            
+        # Drop các cột thời gian gốc (month, day, hour) để chuẩn bị OHE
+        df = df.drop(columns=['month', 'day', 'hour'], errors='ignore')
+        return df
+
     # BƯỚC 10: One-Hot Encoding cho các biến phân loại định tính
     def _ohe_fit(self, df: pd.DataFrame) -> pd.DataFrame:
         """
-        One-Hot Encoding cho các biến định tính danh nghĩa (wd, year, month, hour, day) — fit trên train.
+        One-Hot Encoding cho các biến định tính danh nghĩa (season, day_of_week, time_of_day, wd) — fit trên train.
 
         Lý do chuyển từ Cyclic Encoding sang One-Hot Encoding:
         - Đối với mô hình Hồi quy Tuyến tính, Cyclic Encoding giới hạn mô hình chỉ học được
@@ -433,8 +479,8 @@ class DataPipeline:
         hiệu suất đánh giá bị thổi phồng, không phản ánh thực tế triển khai.
         """
         df = df.copy()
-        # Xác định cột cần scale: tất cả numeric trừ các cột dummy nhị phân OHE và cột định tính gốc
-        exclude = []
+        # Xác định cột cần scale: tất cả numeric trừ các cột dummy nhị phân OHE, các cột định tính gốc và cột year
+        exclude = ['year']
         for col in NOMINAL_COLS:
             exclude.extend([c for c in df.columns if c.startswith(f'{col}_')])
         exclude.extend(NOMINAL_COLS)
@@ -548,6 +594,10 @@ class DataPipeline:
         print("  [Step 9.5] Feature Engineering (Lags, Interactions, Polynomials)")
         df = self._add_engineered_features(df)
 
+        # Bước 9.6: Gom nhóm biến thời gian (Binning)
+        print("  [Step 9.6] Gom nhóm biến thời gian (Binning) theo thiết kế của Notebook")
+        df = self._bin_time_features(df)
+
         # Bước 10: One-Hot Encoding — fit categories từ train
         print("  [Step 10] One-Hot Encoding cho các biến phân loại (fit categories từ train)")
         df = self._ohe_fit(df)
@@ -601,6 +651,7 @@ class DataPipeline:
         df = self._winsorize_transform(df)           # ← bounds từ train
         df = self._log_transform(df)
         df = self._add_engineered_features(df)       # ← Feature Engineering
+        df = self._bin_time_features(df)             # ← Gom nhóm biến thời gian (Binning)
         df = self._ohe_transform(df)                 # ← categories từ train
         df = self._scale_transform(df)               # ← scaler từ train
 
@@ -617,10 +668,14 @@ if __name__ == '__main__':
     import os
 
     DATA_PATH = 'PRSA_Data_Shunyi_20130301-20170228.csv'
+    if not os.path.exists(DATA_PATH):
+        DATA_PATH = os.path.join(os.path.dirname(__file__), 'data', 'PRSA_Data_Shunyi_20130301-20170228.csv')
+    if not os.path.exists(DATA_PATH):
+        DATA_PATH = 'part2/data/PRSA_Data_Shunyi_20130301-20170228.csv'
     
     if not os.path.exists(DATA_PATH):
-        print(f"Không tìm thấy file: {DATA_PATH}")
-        print("Hãy đặt file CSV cùng thư mục với data_pipeline.py hoặc trong thư mục con PRSA_Data_20130301-20170228")
+        print(f"Không tìm thấy file dataset!")
+        print("Hãy đặt file CSV cùng thư mục với data_pipeline.py hoặc trong thư mục con data")
     else:
         # Nạp dữ liệu
         df_raw = pd.read_csv(DATA_PATH)

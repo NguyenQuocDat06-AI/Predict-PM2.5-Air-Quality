@@ -1,5 +1,8 @@
 venv
-data
 __pycache__
 *.pyc
 *.pdf
+*.txt
+*.csv
+*.png
+*.zip
