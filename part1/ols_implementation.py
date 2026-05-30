@@ -127,8 +127,11 @@ def model_metrics(y, y_hat, p):
     r2 = 1 - (rss / tss) if tss != 0 else 0
     r2_adj = 1 - ((n - 1) / (n - p - 1)) * (1 - r2)
     
-    f_stat = ((tss - rss) / p) / (rss / (n - p - 1))
-    f_pvalue = 1 - stats.f.cdf(f_stat, dfn=p, dfd=n - p - 1)
+    if rss > 1e-15:
+        f_stat = ((tss - rss) / p) / (rss / (n - p - 1))
+    else:
+        f_stat = float('inf')
+    f_pvalue = 1 - stats.f.cdf(f_stat, dfn=p, dfd=n - p - 1) if f_stat != float('inf') else 0.0
     
     return rss, tss, r2, r2_adj, f_stat, f_pvalue
 
@@ -147,7 +150,13 @@ def coef_inference(X, y, beta_hat, sigma2_hat):
         var_bi = sigma2_hat * XtX_inv[i][i]
         se.append(math.sqrt(max(var_bi, 0)))
         
-    t_stat = [beta_hat[i] / se[i] for i in range(p_plus_1)]
+    t_stat = []
+    for i in range(p_plus_1):
+        if se[i] > 1e-15:
+            t_stat.append(beta_hat[i] / se[i])
+        else:
+            t_stat.append(float('inf') if beta_hat[i] != 0 else 0)
+            
     df = n - p_plus_1
     p_values = [2 * (1 - stats.t.cdf(abs(t), df)) for t in t_stat]
     
@@ -176,7 +185,7 @@ def vif(X):
             X_other.append([row[k] for k in range(p) if k != j])
             y_j.append(row[j])
             
-        # OLS thủ công
+        # OLS
         Xt_other = manual_transpose(X_other)
         A = manual_matmul(Xt_other, X_other)
         B = manual_matmul(Xt_other, y_j)
@@ -192,9 +201,10 @@ def vif(X):
         
     return vif_vals
 
-def run_monte_carlo(X, true_beta, sigma=1.0, n_sims=1000):
+def run_monte_carlo(X, true_beta, sigma=1.0, n_sims=1000, seed=42):
     """Mô phỏng Monte Carlo kiểm chứng BLUE (Gauss-Markov)"""
     import random
+    random.seed(seed)
     X_list = X.tolist() if hasattr(X, "tolist") else X
     p = len(X_list[0])
     
