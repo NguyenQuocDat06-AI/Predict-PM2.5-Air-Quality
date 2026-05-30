@@ -2,13 +2,41 @@ import math
 from scipy import stats
 
 def manual_transpose(M):
-    """Tính ma trận chuyển vị M^T bằng vòng lặp"""
+    """
+    Tính ma trận chuyển vị M^T.
+
+    Parameters
+    ----------
+    M : list[list[float]]  — ma trận đầu vào kích thước (m x n)
+
+    Returns
+    -------
+    M_T : list[list[float]]  — ma trận chuyển vị kích thước (n x m)
+    """
     rows = len(M)
     cols = len(M[0])
     return [[M[j][i] for j in range(rows)] for i in range(cols)]
 
 def manual_matmul(A, B):
-    """Nhân hai ma trận A * B (hoặc ma trận * vector) bằng vòng lặp"""
+    """
+    Nhân hai ma trận A * B, hoặc ma trận nhân vector (A * b).
+
+    Parameters
+    ----------
+    A : list[list[float]]         — ma trận kích thước (m x k)
+    B : list[list[float]] | list[float]
+                                  — ma trận kích thước (k x n) hoặc vector kích thước (k,)
+
+    Returns
+    -------
+    result : list[list[float]] | list[float]
+                                  — kết quả kích thước (m x n) nếu B là ma trận,
+                                    hoặc vector kích thước (m,) nếu B là vector
+    
+    Raises
+    ------
+    ValueError  — nếu kích thước A và B không khớp
+    """
     rows_A = len(A)
     cols_A = len(A[0])
     
@@ -37,8 +65,21 @@ def manual_matmul(A, B):
 
 def manual_solve(A, b):
     """
-    Giải hệ phương trình Ax = b bằng phương pháp Khử Gauss (Gaussian Elimination)
-    Dùng Partial Pivoting để tăng độ chính xác.
+    Giải hệ phương trình tuyến tính Ax = b bằng phương pháp
+    Khử Gauss có chọn trục xoay (Partial Pivoting).
+
+    Parameters
+    ----------
+    A : list[list[float]]  — ma trận hệ số kích thước (n x n), phải khả nghịch
+    b : list[float]        — vector vế phải kích thước (n,)
+
+    Returns
+    -------
+    x : list[float]  — nghiệm của hệ phương trình kích thước (n,)
+
+    Raises
+    ------
+    ValueError  — nếu ma trận A suy biến (singular)
     """
     n = len(A)
     # Tạo ma trận mở rộng [A | b]
@@ -72,7 +113,18 @@ def manual_solve(A, b):
     return x
 
 def manual_inv(M):
-    """Nghịch đảo ma trận bằng cách giải n hệ phương trình Ax = e_i"""
+    """
+    Tính ma trận nghịch đảo M^{-1} bằng cách giải n hệ phương trình
+    M * x = e_i với e_i là vector đơn vị thứ i.
+
+    Parameters
+    ----------
+    M : list[list[float]]  — ma trận vuông kích thước (n x n), phải khả nghịch
+
+    Returns
+    -------
+    M_inv : list[list[float]]  — ma trận nghịch đảo kích thước (n x n)
+    """
     n = len(M)
     res = [[0.0 for _ in range(n)] for _ in range(n)]
     for j in range(n):
@@ -83,7 +135,20 @@ def manual_inv(M):
     return res
 
 def ols_fit(X, y):
-    """Tính beta_hat = (X^T X)^-1 X^T y"""
+    """
+    Ước lượng OLS: tính beta_hat = (X^T X)^{-1} X^T y và sigma2_hat.
+
+    Parameters
+    ----------
+    X : list[list[float]]  — ma trận thiết kế kích thước (n x (p+1)),
+                             cột đầu tiên là vector toàn 1 (intercept)
+    y : list[float]        — vector phản hồi quan sát kích thước (n,)
+
+    Returns
+    -------
+    beta_hat  : list[float]  — vector hệ số ước lượng kích thước (p+1,)
+    sigma2_hat: float        — ước lượng phương sai nhiễu: RSS / (n - p - 1)
+    """
     # Chuyển ndarray về list
     X_list = X.tolist() if hasattr(X, "tolist") else X
     y_list = y.tolist() if hasattr(y, "tolist") else y
@@ -105,7 +170,18 @@ def ols_fit(X, y):
     return beta_hat, sigma2_hat
 
 def hat_matrix(X):
-    """Tính ma trận chiếu H = X(X^T X)^-1 X^T"""
+    """
+    Tính ma trận chiếu (Hat Matrix): H = X (X^T X)^{-1} X^T.
+
+    Parameters
+    ----------
+    X : list[list[float]]  — ma trận thiết kế kích thước (n x (p+1))
+
+    Returns
+    -------
+    H : list[list[float]]  — Hat matrix kích thước (n x n),
+                             thỏa H^2 = H (idempotent) và H^T = H (đối xứng)
+    """
     X_list = X.tolist() if hasattr(X, "tolist") else X
     Xt = manual_transpose(X_list)
     XtX = manual_matmul(Xt, X_list)
@@ -115,7 +191,24 @@ def hat_matrix(X):
     return H
 
 def model_metrics(y, y_hat, p):
-    """Tính RSS, TSS, R^2, R^2_adj, F_stat"""
+    """
+    Tính các chỉ số đánh giá mô hình hồi quy.
+
+    Parameters
+    ----------
+    y     : list[float]  — vector phản hồi quan sát kích thước (n,)
+    y_hat : list[float]  — vector giá trị dự đoán kích thước (n,)
+    p     : int          — số biến đặc trưng (KHÔNG kể intercept)
+
+    Returns
+    -------
+    rss      : float  — Residual Sum of Squares
+    tss      : float  — Total Sum of Squares
+    r2       : float  — hệ số xác định R^2 ∈ [0, 1]
+    r2_adj   : float  — R^2 hiệu chỉnh
+    f_stat   : float  — thống kê F kiểm định ý nghĩa mô hình tổng thể
+    f_pvalue : float  — p-value tương ứng với F-statistic
+    """
     y_list = y.tolist() if hasattr(y, "tolist") else y
     y_hat_list = y_hat.tolist() if hasattr(y_hat, "tolist") else y_hat
     n = len(y_list)
@@ -136,7 +229,25 @@ def model_metrics(y, y_hat, p):
     return rss, tss, r2, r2_adj, f_stat, f_pvalue
 
 def coef_inference(X, y, beta_hat, sigma2_hat):
-    """Tính SE, t-stat, p-value và CI cho các hệ số"""
+    """
+    Tính suy diễn thống kê cho các hệ số hồi quy:
+    standard errors, t-statistics, p-values và khoảng tin cậy 95%.
+
+    Parameters
+    ----------
+    X          : list[list[float]]  — ma trận thiết kế kích thước (n x (p+1))
+    y          : list[float]        — vector phản hồi quan sát kích thước (n,)
+    beta_hat   : list[float]        — vector hệ số OLS ước lượng kích thước (p+1,)
+    sigma2_hat : float              — ước lượng phương sai nhiễu
+
+    Returns
+    -------
+    se       : list[float]         — standard errors của từng hệ số, kích thước (p+1,)
+    t_stat   : list[float]         — t-statistics, kích thước (p+1,)
+    p_values : list[float]         — p-values (two-tailed), kích thước (p+1,)
+    ci       : tuple(list, list)   — (ci_lower, ci_upper), khoảng tin cậy 95%
+                                     mỗi list kích thước (p+1,)
+    """
     X_list = X.tolist() if hasattr(X, "tolist") else X
     n = len(X_list)
     p_plus_1 = len(X_list[0])
@@ -167,7 +278,24 @@ def coef_inference(X, y, beta_hat, sigma2_hat):
     return se, t_stat, p_values, (ci_lower, ci_upper)
 
 def vif(X):
-    """Tính chuẩn VIF cho từng biến"""
+    """
+    Tính Variance Inflation Factor (VIF) cho từng biến đặc trưng
+    để phát hiện đa cộng tuyến.
+
+    VIF_j = 1 / (1 - R^2_j), với R^2_j là R^2 khi hồi quy X_j
+    theo tất cả các biến còn lại.
+    VIF > 10 cho thấy đa cộng tuyến nghiêm trọng.
+
+    Parameters
+    ----------
+    X : list[list[float]]  — ma trận thiết kế kích thước (n x (p+1)),
+                             cột đầu tiên là intercept (toàn giá trị 1)
+
+    Returns
+    -------
+    vif_vals : list[float]  — danh sách VIF cho p biến đặc trưng
+                              (bỏ qua cột intercept), kích thước (p,)
+    """
     X_list = X.tolist() if hasattr(X, "tolist") else X
     n = len(X_list)
     p = len(X_list[0])
@@ -202,7 +330,24 @@ def vif(X):
     return vif_vals
 
 def run_monte_carlo(X, true_beta, sigma=1.0, n_sims=1000, seed=42):
-    """Mô phỏng Monte Carlo kiểm chứng BLUE (Gauss-Markov)"""
+    """
+    Mô phỏng Monte Carlo để kiểm chứng định lý Gauss–Markov:
+    E[beta_hat_OLS] = beta (không chệch) và OLS có phương sai nhỏ nhất (BLUE).
+
+    Parameters
+    ----------
+    X         : list[list[float]]  — ma trận thiết kế cố định kích thước (n x (p+1))
+    true_beta : list[float]        — vector hệ số thực kích thước (p+1,)
+    sigma     : float              — độ lệch chuẩn của nhiễu ε ~ N(0, sigma^2),
+                                     mặc định 1.0
+    n_sims    : int                — số lần mô phỏng, mặc định 1000
+    seed      : int                — random seed để tái lập kết quả, mặc định 42
+
+    Returns
+    -------
+    ols_betas : list[list[float]]  — danh sách n_sims vector beta_hat_OLS ước lượng,
+                                     mỗi vector kích thước (p+1,)
+    """
     import random
     random.seed(seed)
     X_list = X.tolist() if hasattr(X, "tolist") else X

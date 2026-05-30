@@ -3,7 +3,27 @@ from ols_implementation import ols_fit, manual_matmul
 
 def kfold_cv(X, y, k, random_state=42):
     """
-    k-Fold CV sử dụng OLS.
+    Thực hiện k-Fold Cross-Validation sử dụng OLS để ước lượng
+    sai số tổng quát hóa (generalization error) của mô hình.
+
+    Quy trình: chia dữ liệu thành k phần bằng nhau, mỗi lần dùng
+    k-1 phần để huấn luyện và 1 phần còn lại để kiểm tra,
+    lặp k lần và tính trung bình MSE.
+
+    CV(k) = (1/k) * sum_{i=1}^{k} MSE_i
+
+    Parameters
+    ----------
+    X            : list[list[float]]  — ma trận thiết kế kích thước (n x (p+1)),
+                                        cột đầu tiên là intercept (toàn giá trị 1)
+    y            : list[float]        — vector phản hồi quan sát kích thước (n,)
+    k            : int                — số fold, thường dùng k = 5 hoặc k = 10
+    random_state : int                — random seed để tái lập kết quả, mặc định 42
+
+    Returns
+    -------
+    avg_mse  : float        — trung bình MSE trên k fold (CV score)
+    mse_list : list[float]  — danh sách MSE của từng fold, kích thước (k,)
     """
     X_list = X.tolist() if hasattr(X, "tolist") else X
     y_list = y.tolist() if hasattr(y, "tolist") else y

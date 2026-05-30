@@ -58,7 +58,7 @@ class TestPart1(unittest.TestCase):
         X_n = [[1, 0], [1, 1], [1, 2], [1, 3]]
         y_n = [1.1, 1.9, 3.1, 3.9] 
         beta_n, sigma2_n = ols_fit(X_n, y_n)
-        # RSS = 0.0324, df = 2 => Sigma2 = 0.0162
+        # RSS = 0.032, df = 2 => Sigma2 = 0.016
         self.assertAlmostEqual(sigma2_n, 0.016, places=3)
 
     def test_hat_matrix(self):
@@ -109,16 +109,19 @@ class TestPart1(unittest.TestCase):
         X = [[1, 1], [1, 2]]
         y = [2, 5]
         beta = [0, 2]
-        res = get_residuals(X, y, beta)
+        # get_residuals returns (residuals, y_hat)
+        res, y_hat = get_residuals(X, y, beta)
         self.assertEqual(res, [0, 1])
+        self.assertEqual(y_hat, [2, 4])
 
     def test_cook_distance(self):
-        # Formula: Di = (std_res^2 / p) * (h / (1-h))
+        # Formula: D_i = (std_res^2 * h) / (p * (1 - h))
+        # p = total parameters INCLUDING intercept (= number of columns in design matrix)
         std_res = [2.0]
         h = [0.5]
-        p = 2 # total parameters
+        p = 2  # total parameters (intercept included)
         d = cook_distance(std_res, h, p)
-        # Expected: (4 / 2) * (0.5 / 0.5) = 2 * 1 = 2.0
+        # Expected: (4.0 * 0.5) / (2 * 0.5) = 2.0 / 1.0 = 2.0
         self.assertAlmostEqual(d[0], 2.0)
 
     # --- Tests for cross_validation.py ---
