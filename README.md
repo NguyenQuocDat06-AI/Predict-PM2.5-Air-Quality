@@ -1,89 +1,92 @@
-# Dự án dự đoán chất lượng không khí và PM2.5
+# Đồ án Môn học: Toán Ứng Dụng
+## Đề tài: Dự đoán nồng độ bụi mịn PM2.5 (Tập dữ liệu Beijing PM2.5 - Trạm Shunyi)
 
-Đây là dự án Machine Learning dự đoán nồng độ PM2.5 và chỉ số chất lượng không khí (AQI) dựa trên dữ liệu lịch sử và dự báo thời tiết.
+Dự án này tập trung vào việc nghiên cứu, cài đặt từ đầu bằng **NumPy/SciPy** (không sử dụng thư viện học máy bậc cao như `scikit-learn` cho việc tối ưu mô hình chính) và ứng dụng các thuật toán hồi quy tuyến tính/phi tuyến để dự đoán nồng độ bụi mịn PM2.5 dựa trên dữ liệu khí tượng và ô nhiễm thực tế tại trạm Shunyi, Bắc Kinh.
 
-## 🛠️ Cài đặt
+---
 
-### Yêu cầu
-- Python 3.8+
-- pip (Quản lý gói Python)
+## Thông tin Nhóm 6
+* **Lớp:** 24CTT2
+* **Môn học:** Toán ứng dụng và thống kê- Đại học Khoa học Tự nhiên, ĐHQG-HCM (HCMUS)
+* **Thành viên nhóm:**
+  1. **24120282 - Nguyễn Quốc Đạt** (Trưởng nhóm)
+  2. **24120308 - Mai Văn Hiển**
+  3. **24120294 - Nguyễn Đức Duy**
+  4. **24120184 - Lê Quốc Hưng**
+  5. **24120155 - Trần Nam Việt**
 
-### Cài đặt Dependencies
+---
 
-1. Clone hoặc tải về repository:
-```bash
-git clone <repository-url>
-cd Predict-PM2.5-Air-Quality
+## Cấu trúc Dự án
+Dự án được phân chia thành 2 phần thực nghiệm chính và báo cáo khoa học chi tiết như sau:
+
+```
+Predict-PM2.5-Air-Quality/
+├── part1/                             
+│   ├── ols_implementation.py          
+│   ├── ridge_lasso.py                
+│   ├── cross_validation.py            
+│   ├── residual_analysis.py          
+│   ├── unit_tests.py                  
+│   └── part1_notebook.ipynb           
+│
+├── part2/
+│   ├── data/
+│     ├── PRSA_Data_Shunyi_20130301-20170228.csv
+│   ├── data_pipeline.py               
+│   ├── advanced_methods.py           
+│   ├── model_comparison.py
+│   ├── part2_notebook.ipynb
+│
+├── report/                            
+│   ├── report.tex               
+│   ├── report.bib               
+│   └── report.pdf               
+│
+├── requirements.txt                   
+└── README.md
 ```
 
-2. Tạo môi trường ảo (khuyến nghị):
-```bash
-python3 -m venv venv
-source venv/bin/activate  # Linux/Mac
-# venv\Scripts\activate  # Windows
-```
+---
 
-3. Cài đặt các thư viện cần thiết:
+## Hướng dẫn Chạy các File Chương trình
+
+### 1. Cài đặt thư viện cần thiết
+Đảm bảo bạn đã cài đặt Python 3.10 trở lên. Cài đặt các thư viện phụ thuộc bằng lệnh sau:
 ```bash
 pip install -r requirements.txt
 ```
 
-## 🚀 Hướng dẫn sử dụng
+### 2. Chạy Phần 1 (Mô phỏng & Kiểm thử thuật toán from scratch)
+* **Chạy Unit Tests để xác minh tính chính xác của các hàm toán học tự viết:**
+  ```bash
+  python3 part1/unit_tests.py
+  ```
+  *(Khi chạy thành công, chương trình sẽ in thông báo: `Tất cả unit tests PASSED`)*
 
-### 1. Khám phá dữ liệu
-Chạy notebook để hiểu cấu trúc dữ liệu:
-```bash
-jupyter notebook 01_Data_Exploration.ipynb
-```
+* **Khám phá và chạy mô phỏng Monte Carlo:**
+  Khởi động Jupyter Notebook và mở file `part1/part1_notebook.ipynb` để chạy toàn bộ các cell phân tích mô phỏng:
+  ```bash
+  jupyter notebook part1/part1_notebook.ipynb
+  ```
 
-### 2. Huấn luyện mô hình
-Chạy notebook để huấn luyện mô hình:
-```bash
-jupyter notebook 02_Model_Training.ipynb
-```
+### 3. Chạy Phần 2 (Ứng dụng trên tập dữ liệu thực tế Beijing PM2.5)
+* **Chạy so sánh mô hình tự động và xuất biểu đồ chẩn đoán phần dư:**
+  Chạy trực tiếp script python để huấn luyện đồng thời 6 mô hình và xuất ra các biểu đồ chẩn đoán:
+  ```bash
+  python3 part2/model_comparison.py
+  ```
+  *(Script này sẽ in bảng so sánh hiệu năng MAE, RMSE, R² trực tiếp ra terminal)*
 
-### 3. Đánh giá và so sánh mô hình
-Chạy notebook để đánh giá hiệu năng các mô hình:
-```bash
-jupyter notebook 03_Model_Evaluation_Comparison.ipynb
-```
+* **Chạy Jupyter Notebook để xem phân tích dữ liệu EDA và kết luận chi tiết:**
+  Khởi động Jupyter Notebook và mở file `part2/part2_notebook.ipynb`:
+  ```bash
+  jupyter notebook part2/part2_notebook.ipynb
+  ```
 
-### 4. Dự đoán chất lượng không khí (AQI)
-Chạy notebook để sử dụng mô hình dự đoán AQI:
-```bash
-jupyter notebook 04_Air_Quality_Prediction.ipynb
-```
-
-## 📂 Cấu trúc dự án
-
-```
-Predict-PM2.5-Air-Quality/
-├── data/                    # Dữ liệu đầu vào
-├── notebooks/               # Các notebook Jupyter
-│   ├── 01_Data_Exploration.ipynb  # Khám phá dữ liệu
-│   ├── 02_Model_Training.ipynb      # Huấn luyện mô hình
-│   ├── 03_Model_Evaluation_Comparison.ipynb  # Đánh giá mô hình
-│   └── 04_Air_Quality_Prediction.ipynb        # Dự đoán AQI
-├── models/                  # Mô hình đã huấn luyện
-├── reports/                 # Báo cáo và kết quả
-├── requirements.txt         # Dependencies
-└── README.md                # Thông tin dự án
-```
-
-## 📝 Ghi chú
-
-- Dự án này sử dụng tập dữ liệu AQI từ Cầu Giấy, Hà Nội.
-- Các mô hình được sử dụng: Linear Regression, Ridge Regression, Random Forest, Gradient Boosting, XGBoost, LSTM, và Transformer.
-- Metric đánh giá: MAE, MSE, RMSE, R2-score.
-
-## 🤝 Đóng góp
-
-Đóng góp được hoan nghênh! Vui lòng tạo một branch riêng, thực hiện thay đổi, và gửi Pull Request.
-
-## 📄 License
-
-Dự án này được phát hành dưới MIT License - xem file [LICENSE](LICENSE) để biết thêm chi tiết.
-
-## 👥 Tác giả
-
-Được tạo bởi **[Your Name]** - [email protected]
+* **Biên dịch lại Báo cáo LaTeX từ đầu:**
+  Di chuyển vào thư mục `report/` và sử dụng công cụ `pdflatex` để làm sạch và biên dịch báo cáo thành file PDF:
+  ```bash
+  cd report/
+  pdflatex report_final.tex
+  ```
